@@ -39,16 +39,13 @@ button:focus-visible,textarea:focus-visible,.swatch:focus-visible{outline:3px so
 #left{position:relative}
 #mirror{position:absolute;visibility:hidden;pointer-events:none;padding:14px 16px;font:15px/28px var(--mono);tab-size:2;
   white-space:pre-wrap;overflow-wrap:break-word;height:0;overflow:hidden}
-#ac{position:absolute;z-index:6;min-width:160px;max-width:90%;background:#fff;border:2px solid var(--ink);border-radius:8px;
-  padding:4px;box-shadow:3px 4px 0 rgba(0,0,0,.15);font:15px/1.3 var(--mono);max-height:270px;overflow-y:auto}
+#ac{position:absolute;z-index:6;min-width:160px;max-width:80%;background:#fff;border:2px solid var(--ink);border-radius:8px;
+  padding:4px;box-shadow:3px 4px 0 rgba(0,0,0,.15);font:15px/1.3 var(--mono)}
 #ac div{padding:5px 9px;border-radius:5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #ac div[aria-selected="true"]{background:var(--ink);color:#fff}
 #hint{padding:8px 16px;font-size:12px;color:var(--muted);border-top:1px solid var(--rule)}
 #hint code{font-family:var(--mono);color:var(--ink)}
 
-.toggle{display:inline-flex;align-items:center;gap:6px;font:16px/1 var(--marker);cursor:pointer;user-select:none}
-.toggle input{width:17px;height:17px;margin:0;accent-color:var(--ink);cursor:pointer}
-.toggle input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 .swatches{display:flex;gap:6px;align-items:center}
 .swatch{width:22px;height:22px;padding:0;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--muted)}
 .swatch[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ink)}
@@ -90,7 +87,7 @@ button:focus-visible,textarea:focus-visible,.swatch:focus-visible{outline:3px so
     <textarea id="outline" spellcheck="false" aria-label="Outline editor"></textarea>
     <div id="mirror" aria-hidden="true"></div>
     <div id="ac" role="listbox" aria-label="Places" hidden></div>
-    <div id="hint"><code>- Place</code> &middot; nested <code>- Affordance</code> &middot; link with <code>- Affordance -&gt; Place</code> &middot; after <code>-&gt;</code> pick a target with the arrow keys and Enter &middot; Tab nests, Shift-Tab un-nests &middot; text without a bullet is a note</div>
+    <div id="hint"><code>- Place</code> &middot; nested <code>- Affordance</code> &middot; link with <code>- Affordance -&gt; Place</code> &middot; after <code>-&gt;</code> pick a place with the arrow keys and Enter &middot; Tab nests, Shift-Tab un-nests &middot; text without a bullet is a note</div>
   </section>
 
   <div id="divider" role="separator" aria-label="Resize panes"></div>
@@ -107,9 +104,6 @@ button:focus-visible,textarea:focus-visible,.swatch:focus-visible{outline:3px so
       </span>
       <button id="btnUndo" title="Remove the last mark">Undo</button>
       <button id="btnWipe" title="Remove all marks">Wipe marks</button>
-      <label class="toggle" title="When on, the list after -> also offers affordances, not only places">
-        <input type="checkbox" id="optAffs"> Allow linking to affordances
-      </label>
       <span class="spacer"></span>
       <span id="exportWrap">
         <button id="btnExport" aria-haspopup="true" aria-expanded="false">Export</button>
@@ -176,8 +170,7 @@ let fileHandle = null, fileName = 'untitled.md', dirty = false;
 /* ---------- 2. parse: outline text -> places, affordances and links ----------
    - A top-level bullet is a place.
    - A bullet nested under a place is one of its affordances.
-   - "Affordance -> Name" links that affordance to the bullet with that name: a place, or another
-     affordance. "Place > Affordance" picks out one affordance when the name alone is ambiguous.
+   - "Affordance -> Place name" links that affordance to the named place.
    - A bullet nested under an affordance is the place it leads to (shorthand for the arrow).
    - Lines that are not bullets are ignored. */
 const ARROW = /\s*(?:->|→)\s*/;
@@ -192,9 +185,7 @@ function docTitle(text) {
 }
 function bulletTree(text) {
   const roots = [], stack = [];
-  let line = -1;
   for (const raw of text.split('\n')) {
-    line++;
     const m = raw.match(/^([ \t]*)[-*+][ \t]+(.*)$/);
     if (!m) continue;
     const body = m[2].trim();
@@ -203,7 +194,7 @@ function bulletTree(text) {
     for (const ch of m[1]) cols += ch === '\t' ? 2 : 1;
     while (stack.length && stack[stack.length - 1].cols >= cols) stack.pop();
     const parts = body.split(ARROW).map(s => s.trim());
-    const item = { line, text: body, label: parts[0], targets: parts.slice(1).filter(Boolean), children: [] };
+    const item = { text: body, label: parts[0], targets: parts.slice(1).filter(Boolean), children: [] };
     (stack.length ? stack[stack.length - 1].item.children : roots).push(item);
     stack.push({ cols, item });
   }
@@ -214,70 +205,50 @@ function buildGraph(tree) {
   const get = name => {
     const key = name.toLowerCase();
     let p = map.get(key);
-    if (!p) { p = { key, name, affs: [], self: [], home: null }; map.set(key, p); places.push(p); }
+    if (!p) { p = { key, name, affs: [], self: [] }; map.set(key, p); places.push(p); }
     return p;
   };
-  // home = where the place is written in the outline: null for a top-level bullet, or the
-  // place and affordance it is nested under. The board is laid out from this, not from the links.
-  const addPlace = (item, home) => {
-    const name = item.label || 'Untitled', fresh = !map.has(name.toLowerCase());
-    const p = get(name);                          // the same name twice means the same place
-    if (fresh) p.home = home;
+  const addPlace = item => {
+    const p = get(item.label || 'Untitled');     // the same name twice means the same place
     p.self.push(...item.targets);
     for (const a of item.children) {
       const aff = { label: a.label, targets: [...a.targets] };
       p.affs.push(aff);
-      const i = p.affs.length - 1;
-      for (const sub of a.children) aff.targets.push(addPlace(sub, { parent: p, i }).name);
+      for (const sub of a.children) aff.targets.push(addPlace(sub).name);
     }
     return p;
   };
-  tree.forEach(item => addPlace(item, null));
-  // Turn target names into { place, aff }. aff is the affordance's position in that place, or -1 for
-  // the place itself. A name that matches nothing becomes a new empty place beside whatever links to it.
-  const resolve = (name, from, fromAff) => {
-    const key = name.toLowerCase();
-    if (map.has(key)) return { place: map.get(key), aff: -1 };
-    const cut = name.indexOf(' > ');
-    if (cut > 0) {
-      const p = map.get(name.slice(0, cut).trim().toLowerCase()), a = name.slice(cut + 3).trim().toLowerCase();
-      const i = p ? p.affs.findIndex(x => x.label.toLowerCase() === a) : -1;
-      if (i >= 0) return { place: p, aff: i };
-    }
-    for (const p of places) {
-      const i = p.affs.findIndex(x => x.label.toLowerCase() === key);
-      if (i >= 0) return { place: p, aff: i };
-    }
-    const stub = get(name);
-    stub.home = { parent: from, i: fromAff };
-    return { place: stub, aff: -1 };
-  };
+  tree.forEach(addPlace);
+  // Turn target names into places. A name that is not defined anywhere becomes an empty place.
   for (let i = 0; i < places.length; i++) {
     const p = places[i];
-    p.self = p.self.map(n => resolve(n, p, -1));
-    p.affs.forEach((a, k) => { a.targets = a.targets.map(n => resolve(n, p, k)); });
+    p.self = p.self.map(get);
+    for (const a of p.affs) a.targets = a.targets.map(get);
   }
   return places;
 }
 
-/* ---------- 3. layout: mirrors the outline. Top-level places stack down the left; a place nested
-   under an affordance sits one column to the right of it. Links only add lines. ---------- */
+/* ---------- 3. layout: a place sits one column right of whatever first leads to it ---------- */
 function layout(places, title) {
   ctx.font = FONT;
+  const targeted = new Set();
   for (const p of places) {
     p.pw = ctx.measureText(p.name).width;
     p.aw = p.affs.map(a => ctx.measureText(a.label).width);
     p.w = Math.max(70, p.pw, ...p.aw) + 14;
     p.h = PLACE_H + p.affs.length * AFF_H + 8;
     p.kids = []; p.d = -1;
-    p.edges = [...p.self.map(t => [-1, t.place, t.aff]), ...p.affs.flatMap((a, i) => a.targets.map(t => [i, t.place, t.aff]))];
+    p.edges = [...p.self.map(t => [-1, t]), ...p.affs.flatMap((a, i) => a.targets.map(t => [i, t]))];
+    for (const e of p.edges) if (e[1] !== p) targeted.add(e[1]);
   }
+  const visit = (p, d) => {
+    p.d = d;
+    for (const [i, t] of p.edges) if (t.d < 0) { p.kids.push({ i, node: t }); visit(t, d + 1); }
+  };
   const roots = [];
-  for (const p of places) { if (p.home) p.home.parent.kids.push({ i: p.home.i, node: p }); else roots.push(p); }
-  for (const p of places) p.kids.sort((a, b) => a.i - b.i);
-  const visit = (p, d) => { p.d = d; for (const k of p.kids) if (k.node.d < 0) visit(k.node, d + 1); };
-  roots.forEach(r => visit(r, 0));
-  for (const p of places) if (p.d < 0) { roots.push(p); visit(p, 0); }
+  for (const p of places) if (!targeted.has(p)) { roots.push(p); visit(p, 0); }
+  for (const p of places) if (p.d < 0) { roots.push(p); visit(p, 0); }   // places only reachable in a loop
+  roots.sort((a, b) => places.indexOf(a) - places.indexOf(b));            // keep the order they were written in
 
   const colW = [];
   for (const p of places) colW[p.d] = Math.max(colW[p.d] || 0, p.w);
@@ -308,11 +279,11 @@ function layout(places, title) {
   }
   const route = makeRouter(places, w + PAD, h + PAD, walls);
   for (const p of places) {
-    p.routes = p.edges.map(([i, t, ti]) => {
+    p.routes = p.edges.map(([i, t]) => {
       const rowY = i < 0 ? p.y + 16 : p.y + PLACE_H + AFF_H * (i + 1) - 11;
       const start = { x: i < 0 ? p.x + p.pw + 10 : p.x + p.aw[i] + 12, y: rowY };
-      const tip = { x: t.x - 12, y: ti < 0 ? t.y + 16 : t.y + PLACE_H + AFF_H * (ti + 1) - 11 };
-      const C = route(p, rowY, t, tip.y) || [];
+      const tip = { x: t.x - 12, y: t.y + 16 };
+      const C = route(p, rowY, t) || [];
       const n = C.length;
       if (n === 2) { C[0].y = rowY; C[1].y = tip.y; }
       else if (n > 2) {
@@ -393,9 +364,9 @@ function makeRouter(places, W, H, walls) {
     for (let y = Math.max(0, Math.floor(r.y0 / CELL)); y <= Math.min(rows - 1, Math.floor(r.y1 / CELL)); y++)
       for (let x = Math.max(0, Math.floor(r.x0 / CELL)); x <= Math.min(cols - 1, Math.floor(r.x1 / CELL)); x++) blocked[y * cols + x] = 1;
   }
-  return function (from, rowY, to, toY) {
+  return function (from, rowY, to) {
     const sx = Math.min(cols - 1, cx1(from) + 1), sy = Math.floor(rowY / CELL);
-    const ex = Math.max(1, cx0(to) - 1), ey = Math.floor(toY / CELL);
+    const ex = Math.max(1, cx0(to) - 1), ey = Math.floor((to.y + 16) / CELL);
     const start = (sy * cols + sx) * 4, goal = (ey * cols + ex) * 4;   // direction 0 = heading right
     g.fill(Infinity);
     const heap = makeHeap();
@@ -567,7 +538,6 @@ function indentSelection(dir) {
 // Autocomplete for place names after "->"
 const ac = $('ac');
 let acList = [], acIndex = 0, acCtx = null;
-let linkAffs = false;      // preference: offer affordances as link targets in the list
 function acHide() { ac.hidden = true; acList = []; }
 function acUpdate() {
   const v = ed.value, s = ed.selectionStart;
@@ -578,40 +548,16 @@ function acUpdate() {
   const m = /^[ \t]*[-*+][ \t]+/.test(before) && before.match(/^(.*)(?:->|→)[ \t]*(.*)$/);
   if (!m) return acHide();
   const query = m[2].toLowerCase();
-  // Every other place in the file and, if the preference is on, every other affordance as "Place > Affordance".
-  const entries = [];
-  (function walk(items, depth, parent) {
-    for (const it of items) { entries.push({ it, place: depth % 2 === 0, parent }); walk(it.children, depth + 1, it); }
-  })(bulletTree(v), 0, null);
-  const lineNo = v.slice(0, ls).split('\n').length - 1;
-  const current = entries.find(e => e.it.line === lineNo);
-  const placeNames = new Set(entries.filter(e => e.place).map(e => e.it.label.toLowerCase()));
-  const affCount = {};
-  for (const e of entries) if (!e.place) {
-    const pair = e.parent.label.toLowerCase() + ' > ' + e.it.label.toLowerCase(), k = e.it.label.toLowerCase();
-    (affCount[k] = affCount[k] || new Set()).add(pair);
-  }
-  const seen = new Set(), mine = [], others = [];
-  for (const e of entries) {
-    if (e === current || !e.it.label || (!e.place && !linkAffs)) continue;
-    const k = e.it.label.toLowerCase();
-    const show = e.place ? e.it.label : e.parent.label + ' > ' + e.it.label;
-    // insert the short name when it can only mean this bullet
-    const value = e.place || (!placeNames.has(k) && affCount[k].size === 1) ? e.it.label : show;
-    if (seen.has(show.toLowerCase())) continue;
-    seen.add(show.toLowerCase());
-    const rank = k.startsWith(query) ? 0 : show.toLowerCase().includes(query) ? 1 : -1;
-    if (rank < 0) continue;
-    (current && e.parent === current.it ? mine : others).push({ show, value, rank });
-  }
-  const byRank = (a, b) => a.rank - b.rank;                      // sort is stable: file order within a rank
-  const list = [...mine.sort(byRank), ...others.sort(byRank)].slice(0, 60);
-  if (!list.length || (list.length === 1 && list[0].value.toLowerCase() === query)) return acHide();
+  // every place named anywhere else in the file
+  const names = buildGraph(bulletTree(v.slice(0, ls) + m[1] + v.slice(le))).map(p => p.name);
+  const list = [...names.filter(n => n.toLowerCase().startsWith(query)),
+                ...names.filter(n => !n.toLowerCase().startsWith(query) && n.toLowerCase().includes(query))].slice(0, 8);
+  if (!list.length || (list.length === 1 && list[0].toLowerCase() === query)) return acHide();
   acList = list; acIndex = 0; acCtx = { from: s - m[2].length, to: s };
   ac.textContent = '';
-  list.forEach((entry, i) => {
+  list.forEach((name, i) => {
     const d = document.createElement('div');
-    d.textContent = entry.show; d.setAttribute('role', 'option');
+    d.textContent = name; d.setAttribute('role', 'option');
     d.addEventListener('mousedown', ev => { ev.preventDefault(); acAccept(i); });
     ac.appendChild(d);
   });
@@ -627,13 +573,9 @@ function acUpdate() {
   ac.style.left = Math.max(4, Math.min(x, ed.clientWidth - ac.offsetWidth - 4)) + 'px';
   ac.style.top = y + 'px';
 }
-function acMark() {
-  [...ac.children].forEach((d, i) => d.setAttribute('aria-selected', String(i === acIndex)));
-  const sel = ac.children[acIndex];
-  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
-}
+function acMark() { [...ac.children].forEach((d, i) => d.setAttribute('aria-selected', String(i === acIndex))); }
 function acAccept(i) {
-  const name = acList[i].value, c = acCtx;
+  const name = acList[i], c = acCtx;
   acHide();
   const gap = /[ \t]/.test(ed.value[c.from - 1] || '') ? '' : ' ';
   replaceRange(c.from, c.to, gap + name);
@@ -918,12 +860,6 @@ document.querySelectorAll('.swatch').forEach(b => b.onclick = () => {
 });
 $('btnUndo').onclick = () => { marks.pop(); paint(); };
 $('btnWipe').onclick = () => { marks = []; paint(); };
-try { linkAffs = localStorage.getItem('breadboard.linkAffs') === '1'; } catch (e) {}
-$('optAffs').checked = linkAffs;
-$('optAffs').onchange = e => {
-  linkAffs = e.target.checked;
-  try { localStorage.setItem('breadboard.linkAffs', linkAffs ? '1' : '0'); } catch (err) {}
-};
 
 const menu = $('exportMenu'), btnExport = $('btnExport');
 const showMenu = on => { menu.hidden = !on; btnExport.setAttribute('aria-expanded', String(on)); };
