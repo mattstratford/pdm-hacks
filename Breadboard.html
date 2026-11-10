@@ -1,0 +1,972 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breadboard</title>
+<style>
+/* Layout: two panes side by side. Left is a lined notepad for the outline; right is a framed whiteboard. */
+:root{
+  --ink:#1c1d21; --blue:#1f4fa8; --red:#c8312b; --green:#1f7a45;
+  --board:#fdfdfb; --frame:#b4b9be; --desk:#e3e6e2; --paper:#f7f7f2; --rule:#d9dcd5; --muted:#676c73;
+  --marker:"Marker Felt","Kalam","Chalkboard SE","Comic Sans MS",cursive;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--desk);color:var(--ink);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#app{display:flex;height:100%}
+#left{flex:0 0 36%;min-width:200px;display:flex;flex-direction:column;background:var(--paper)}
+#right{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+#divider{flex:0 0 9px;cursor:col-resize;background:var(--desk);position:relative;touch-action:none}
+#divider::after{content:"";position:absolute;inset:40% 3px;border-radius:2px;background:var(--frame)}
+#divider:hover::after,#divider.drag::after{background:var(--muted)}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px}
+.bar .spacer{flex:1}
+button{font:16px/1 var(--marker);color:var(--ink);background:#fff;border:2px solid var(--ink);
+  border-radius:255px 14px 225px 14px/14px 225px 14px 255px;padding:6px 12px;cursor:pointer}
+button:hover{background:#eef1f6}
+button[aria-pressed="true"]{background:var(--ink);color:#fff}
+button:focus-visible,textarea:focus-visible,.swatch:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+#fileName{font:13px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+#outline{flex:1;width:100%;resize:none;border:0;border-top:1px solid var(--rule);outline-offset:-3px;
+  padding:14px 16px;font:15px/28px var(--mono);color:var(--ink);tab-size:2;white-space:pre-wrap;overflow-wrap:break-word;overflow-x:hidden;overflow-y:auto;
+  background:repeating-linear-gradient(var(--paper) 0 27px,var(--rule) 27px 28px) local 0 14px}
+#left{position:relative}
+#mirror{position:absolute;visibility:hidden;pointer-events:none;padding:14px 16px;font:15px/28px var(--mono);tab-size:2;
+  white-space:pre-wrap;overflow-wrap:break-word;height:0;overflow:hidden}
+#ac{position:absolute;z-index:6;min-width:160px;max-width:90%;background:#fff;border:2px solid var(--ink);border-radius:8px;
+  padding:4px;box-shadow:3px 4px 0 rgba(0,0,0,.15);font:15px/1.3 var(--mono);max-height:270px;overflow-y:auto}
+#ac div{padding:5px 9px;border-radius:5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ac div[aria-selected="true"]{background:var(--ink);color:#fff}
+#hint{padding:8px 16px;font-size:12px;color:var(--muted);border-top:1px solid var(--rule)}
+#hint code{font-family:var(--mono);color:var(--ink)}
+
+.toggle{display:inline-flex;align-items:center;gap:6px;font:16px/1 var(--marker);cursor:pointer;user-select:none}
+.toggle input{width:17px;height:17px;margin:0;accent-color:var(--ink);cursor:pointer}
+.toggle input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.swatches{display:flex;gap:6px;align-items:center}
+.swatch{width:22px;height:22px;padding:0;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--muted)}
+.swatch[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ink)}
+#exportWrap{position:relative}
+#exportMenu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;background:#fff;border:2px solid var(--ink);
+  border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:190px;box-shadow:3px 4px 0 rgba(0,0,0,.15)}
+#exportMenu button{border:0;border-radius:6px;text-align:left;padding:8px 10px}
+#exportMenu small{font:11px var(--mono);color:var(--muted);float:right;margin-top:3px}
+
+#boardWrap{flex:1;min-height:0;overflow:auto;margin:0 12px 12px 3px;border:7px solid var(--frame);
+  border-color:#cfd3d7 #a9aeb4 #9a9fa5 #c2c6ca;border-radius:7px;
+  background:linear-gradient(115deg,#fff 0%,#fbfcfb 38%,#f2f4f3 58%,#fdfdfc 100%);
+  box-shadow:inset 0 0 14px rgba(0,0,0,.07),0 2px 5px rgba(0,0,0,.15)}
+#stage{position:relative}
+#board{display:block}
+#board.draw{cursor:crosshair;touch-action:none}
+#board.text{cursor:text}
+.note{position:absolute;height:28px;min-width:160px;padding:0;border:0;border-bottom:2px dashed var(--muted);
+  background:rgba(255,255,255,.7);font:22px/28px var(--marker);outline:none}
+
+@media (max-width:700px){
+  #app{flex-direction:column}
+  #left{flex-basis:40%;min-width:0;min-height:120px}
+  #divider{cursor:row-resize}
+  #divider::after{inset:3px 40%}
+  #boardWrap{margin:0 8px 8px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="left" aria-label="Outline">
+    <div class="bar">
+      <button id="btnNew" title="New outline">New</button>
+      <button id="btnOpen" title="Open a Markdown file (Cmd/Ctrl+O)">Open</button>
+      <button id="btnSave" title="Save as Markdown (Cmd/Ctrl+S)">Save</button>
+      <span id="fileName">untitled.md</span>
+    </div>
+    <textarea id="outline" spellcheck="false" aria-label="Outline editor"></textarea>
+    <div id="mirror" aria-hidden="true"></div>
+    <div id="ac" role="listbox" aria-label="Places" hidden></div>
+    <div id="hint"><code>- Place</code> &middot; nested <code>- Affordance</code> &middot; link with <code>- Affordance -&gt; Place</code> &middot; after <code>-&gt;</code> pick a target with the arrow keys and Enter &middot; Tab nests, Shift-Tab un-nests &middot; text without a bullet is a note</div>
+  </section>
+
+  <div id="divider" role="separator" aria-label="Resize panes"></div>
+
+  <section id="right" aria-label="Breadboard">
+    <div class="bar">
+      <button id="toolText" data-tool="text" aria-pressed="false" title="Click the board to write a note">Text</button>
+      <button id="toolDraw" data-tool="draw" aria-pressed="false" title="Draw freehand on the board">Draw</button>
+      <span class="swatches" role="group" aria-label="Marker colour">
+        <button class="swatch" data-color="#c8312b" style="background:#c8312b" aria-pressed="true" title="Red"></button>
+        <button class="swatch" data-color="#1f7a45" style="background:#1f7a45" aria-pressed="false" title="Green"></button>
+        <button class="swatch" data-color="#1f4fa8" style="background:#1f4fa8" aria-pressed="false" title="Blue"></button>
+        <button class="swatch" data-color="#1c1d21" style="background:#1c1d21" aria-pressed="false" title="Black"></button>
+      </span>
+      <button id="btnUndo" title="Remove the last mark">Undo</button>
+      <button id="btnWipe" title="Remove all marks">Wipe marks</button>
+      <label class="toggle" title="When on, the list after -> also offers affordances, not only places">
+        <input type="checkbox" id="optAffs"> Allow linking to affordances
+      </label>
+      <span class="spacer"></span>
+      <span id="exportWrap">
+        <button id="btnExport" aria-haspopup="true" aria-expanded="false">Export</button>
+        <div id="exportMenu" hidden>
+          <button data-fmt="jpg">Board as image <small>.jpg</small></button>
+          <button data-fmt="pdf">Board as PDF <small>.pdf</small></button>
+          <button data-fmt="docx">Outline for Word <small>.docx</small></button>
+          <button data-fmt="opml">Outline as OPML <small>.opml</small></button>
+          <button data-fmt="md">Outline as Markdown <small>.md</small></button>
+        </div>
+      </span>
+    </div>
+    <div id="boardWrap"><div id="stage"><canvas id="board"></canvas></div></div>
+  </section>
+</div>
+<input type="file" id="filePick" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+
+<script>
+"use strict";
+/* ============================================================
+   Breadboard. One file, no dependencies.
+   Sections: 1 state · 2 parse · 3 layout · 4 draw · 5 editor
+             6 markup tools · 7 platform (file IO) · 8 exporters · 9 wiring
+   To port to a native Mac app, load this page in a WKWebView and
+   replace section 7 (platform) with calls to native code.
+   ============================================================ */
+
+/* ---------- 1. state ---------- */
+const $ = id => document.getElementById(id);
+const ed = $('outline'), canvas = $('board'), wrap = $('boardWrap'), stage = $('stage');
+const ctx = canvas.getContext('2d');
+
+const FAMILY = '"Marker Felt","Kalam","Chalkboard SE","Comic Sans MS",cursive';
+const FONT = '20px ' + FAMILY, NOTE_FONT = '22px ' + FAMILY, TITLE_FONT = '30px ' + FAMILY;
+const INK = '#1c1d21', PURPLE = '#7b3fb5', MUTED = '#8a8f96', BOARD = '#fdfdfb';
+const PAD = 64, TITLE_H = 64, HOP = 6, GAP_X = 90, GAP_Y = 34, PLACE_H = 34, AFF_H = 28;
+
+const SAMPLE = [
+  '# Autopay',
+  '',
+  'Lines without a bullet are notes. They stay off the board.',
+  '',
+  '- Invoice',
+  '  - Turn on Autopay -> Setup Autopay',
+  '- Setup Autopay',
+  '  - CC fields',
+  '  - FI logo',
+  '  - Submit -> Confirm',
+  '  - Cancel -> Invoice',
+  '- Confirm',
+  '  - Thank you message',
+  '- Customer list',
+  '  - Customer detail',
+  '    - Customer page',
+  '      - Disable Autopay',
+  ''
+].join('\n');
+
+let scene = { nodes: [], w: 0, h: 0 };
+let marks = [];            // {type:'path',color,pts:[[x,y],...]} | {type:'text',color,x,y,text}
+let tool = null, color = '#c8312b', stroke = null;
+let fileHandle = null, fileName = 'untitled.md', dirty = false;
+
+/* ---------- 2. parse: outline text -> places, affordances and links ----------
+   - A top-level bullet is a place.
+   - A bullet nested under a place is one of its affordances.
+   - "Affordance -> Name" links that affordance to the bullet with that name: a place, or another
+     affordance. "Place > Affordance" picks out one affordance when the name alone is ambiguous.
+   - A bullet nested under an affordance is the place it leads to (shorthand for the arrow).
+   - Lines that are not bullets are ignored. */
+const ARROW = /\s*(?:->|→)\s*/;
+// The board title: a "# Heading" on the first non-blank line of the file.
+function docTitle(text) {
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const m = line.match(/^#[ \t]+(.+)$/);
+    return m ? m[1].trim() : '';
+  }
+  return '';
+}
+function bulletTree(text) {
+  const roots = [], stack = [];
+  let line = -1;
+  for (const raw of text.split('\n')) {
+    line++;
+    const m = raw.match(/^([ \t]*)[-*+][ \t]+(.*)$/);
+    if (!m) continue;
+    const body = m[2].trim();
+    if (!body) continue;
+    let cols = 0;
+    for (const ch of m[1]) cols += ch === '\t' ? 2 : 1;
+    while (stack.length && stack[stack.length - 1].cols >= cols) stack.pop();
+    const parts = body.split(ARROW).map(s => s.trim());
+    const item = { line, text: body, label: parts[0], targets: parts.slice(1).filter(Boolean), children: [] };
+    (stack.length ? stack[stack.length - 1].item.children : roots).push(item);
+    stack.push({ cols, item });
+  }
+  return roots;
+}
+function buildGraph(tree) {
+  const map = new Map(), places = [];
+  const get = name => {
+    const key = name.toLowerCase();
+    let p = map.get(key);
+    if (!p) { p = { key, name, affs: [], self: [], home: null }; map.set(key, p); places.push(p); }
+    return p;
+  };
+  // home = where the place is written in the outline: null for a top-level bullet, or the
+  // place and affordance it is nested under. The board is laid out from this, not from the links.
+  const addPlace = (item, home) => {
+    const name = item.label || 'Untitled', fresh = !map.has(name.toLowerCase());
+    const p = get(name);                          // the same name twice means the same place
+    if (fresh) p.home = home;
+    p.self.push(...item.targets);
+    for (const a of item.children) {
+      const aff = { label: a.label, targets: [...a.targets] };
+      p.affs.push(aff);
+      const i = p.affs.length - 1;
+      for (const sub of a.children) aff.targets.push(addPlace(sub, { parent: p, i }).name);
+    }
+    return p;
+  };
+  tree.forEach(item => addPlace(item, null));
+  // Turn target names into { place, aff }. aff is the affordance's position in that place, or -1 for
+  // the place itself. A name that matches nothing becomes a new empty place beside whatever links to it.
+  const resolve = (name, from, fromAff) => {
+    const key = name.toLowerCase();
+    if (map.has(key)) return { place: map.get(key), aff: -1 };
+    const cut = name.indexOf(' > ');
+    if (cut > 0) {
+      const p = map.get(name.slice(0, cut).trim().toLowerCase()), a = name.slice(cut + 3).trim().toLowerCase();
+      const i = p ? p.affs.findIndex(x => x.label.toLowerCase() === a) : -1;
+      if (i >= 0) return { place: p, aff: i };
+    }
+    for (const p of places) {
+      const i = p.affs.findIndex(x => x.label.toLowerCase() === key);
+      if (i >= 0) return { place: p, aff: i };
+    }
+    const stub = get(name);
+    stub.home = { parent: from, i: fromAff };
+    return { place: stub, aff: -1 };
+  };
+  for (let i = 0; i < places.length; i++) {
+    const p = places[i];
+    p.self = p.self.map(n => resolve(n, p, -1));
+    p.affs.forEach((a, k) => { a.targets = a.targets.map(n => resolve(n, p, k)); });
+  }
+  return places;
+}
+
+/* ---------- 3. layout: mirrors the outline. Top-level places stack down the left; a place nested
+   under an affordance sits one column to the right of it. Links only add lines. ---------- */
+function layout(places, title) {
+  ctx.font = FONT;
+  for (const p of places) {
+    p.pw = ctx.measureText(p.name).width;
+    p.aw = p.affs.map(a => ctx.measureText(a.label).width);
+    p.w = Math.max(70, p.pw, ...p.aw) + 14;
+    p.h = PLACE_H + p.affs.length * AFF_H + 8;
+    p.kids = []; p.d = -1;
+    p.edges = [...p.self.map(t => [-1, t.place, t.aff]), ...p.affs.flatMap((a, i) => a.targets.map(t => [i, t.place, t.aff]))];
+  }
+  const roots = [];
+  for (const p of places) { if (p.home) p.home.parent.kids.push({ i: p.home.i, node: p }); else roots.push(p); }
+  for (const p of places) p.kids.sort((a, b) => a.i - b.i);
+  const visit = (p, d) => { p.d = d; for (const k of p.kids) if (k.node.d < 0) visit(k.node, d + 1); };
+  roots.forEach(r => visit(r, 0));
+  for (const p of places) if (p.d < 0) { roots.push(p); visit(p, 0); }
+
+  const colW = [];
+  for (const p of places) colW[p.d] = Math.max(colW[p.d] || 0, p.w);
+  const colX = [PAD];
+  for (let d = 0; d < colW.length; d++) colX[d + 1] = colX[d] + colW[d] + GAP_X;
+  function put(n, y) {
+    n.x = colX[n.d]; n.y = y;
+    let cy = y;
+    for (const k of n.kids) {
+      // try to sit level with the affordance that leads here
+      cy = Math.max(cy, k.i < 0 ? y : y + PLACE_H + AFF_H * (k.i + 1) - 27);
+      cy += put(k.node, cy) + GAP_Y;
+    }
+    return Math.max(n.h, n.kids.length ? cy - y - GAP_Y : 0);
+  }
+  let y = PAD + (title ? TITLE_H : 0);
+  for (const r of roots) y += put(r, y) + GAP_Y * 1.6;
+  let w = 0, h = 0;
+  for (const n of places) { w = Math.max(w, n.x + n.w); h = Math.max(h, n.y + n.h); }
+
+  // Connection lines: routed around every entity so they never run over text.
+  const walls = [];
+  if (title) {
+    ctx.font = TITLE_FONT;
+    const tw = ctx.measureText(title).width;
+    w = Math.max(w, PAD + tw);
+    walls.push({ x0: 0, y0: PAD - 14, x1: PAD + tw + 8, y1: PAD + 34 });
+  }
+  const route = makeRouter(places, w + PAD, h + PAD, walls);
+  for (const p of places) {
+    p.routes = p.edges.map(([i, t, ti]) => {
+      const rowY = i < 0 ? p.y + 16 : p.y + PLACE_H + AFF_H * (i + 1) - 11;
+      const start = { x: i < 0 ? p.x + p.pw + 10 : p.x + p.aw[i] + 12, y: rowY };
+      const tip = { x: t.x - 12, y: ti < 0 ? t.y + 16 : t.y + PLACE_H + AFF_H * (ti + 1) - 11 };
+      const C = route(p, rowY, t, tip.y) || [];
+      const n = C.length;
+      if (n === 2) { C[0].y = rowY; C[1].y = tip.y; }
+      else if (n > 2) {
+        if (C[0].y === C[1].y) C[0].y = C[1].y = rowY;
+        C[n - 1].y = C[n - 2].y = tip.y;
+      }
+      // drop points in the middle of a straight horizontal run, so each run is one stretch
+      const pts = [start, ...C, tip].filter((q, k, arr) =>
+        k === 0 || k === arr.length - 1 || Math.abs(arr[k - 1].y - q.y) > 5 || Math.abs(arr[k + 1].y - q.y) > 5);
+      for (const q of pts) { w = Math.max(w, q.x); h = Math.max(h, q.y); }
+      return { pts, hops: [] };
+    });
+  }
+
+  // Line hops: where a horizontal stretch of one line crosses a vertical stretch of another,
+  // the horizontal one jumps over.
+  const all = places.flatMap(p => p.routes), vertical = [];
+  for (const rt of all) for (let k = 1; k < rt.pts.length; k++) {
+    const a = rt.pts[k - 1], b = rt.pts[k];
+    if (Math.abs(a.x - b.x) < 1) vertical.push({ rt, x: a.x, y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) });
+  }
+  for (const rt of all) for (let k = 1; k < rt.pts.length; k++) {
+    const a = rt.pts[k - 1], b = rt.pts[k];
+    rt.hops[k - 1] = [];
+    if (Math.abs(a.y - b.y) > 5) continue;
+    const lo = Math.min(a.x, b.x) + 20, hi = Math.max(a.x, b.x) - 20;      // keep clear of corners
+    for (const v of vertical) {
+      const y = a.y + (b.y - a.y) * ((v.x - a.x) / (b.x - a.x || 1));
+      if (v.x > lo && v.x < hi && y > v.y0 + HOP && y < v.y1 - HOP) rt.hops[k - 1].push(v.x);
+    }
+    rt.hops[k - 1].sort((p, q) => (b.x > a.x ? p - q : q - p));
+    rt.hops[k - 1] = rt.hops[k - 1].filter((x, n, arr) => n === 0 || Math.abs(x - arr[n - 1]) > HOP * 2 + 2);
+  }
+  return { nodes: places, w, h, title };
+}
+
+// Grid path-finder (A*). Entities are walls; lines leave from the right of the source
+// and always arrive at the left of the target, taking whatever detour that needs.
+const CELL = 8, CLEAR = 7, TURN = 5, SHARED = 8;
+function makeHeap() {
+  const f = [], v = [];
+  return {
+    get size() { return f.length; },
+    push(F, V) {
+      let i = f.length; f.push(F); v.push(V);
+      while (i > 0) { const p = (i - 1) >> 1; if (f[p] <= F) break; f[i] = f[p]; v[i] = v[p]; i = p; }
+      f[i] = F; v[i] = V;
+    },
+    pop() {
+      const top = v[0], F = f.pop(), V = v.pop(), n = f.length;
+      if (n) {
+        let i = 0;
+        for (;;) {
+          let c = 2 * i + 1;
+          if (c >= n) break;
+          if (c + 1 < n && f[c + 1] < f[c]) c++;
+          if (f[c] >= F) break;
+          f[i] = f[c]; v[i] = v[c]; i = c;
+        }
+        f[i] = F; v[i] = V;
+      }
+      return top;
+    }
+  };
+}
+function makeRouter(places, W, H, walls) {
+  const cols = Math.ceil(W / CELL) + 1, rows = Math.ceil(H / CELL) + 1, N = cols * rows;
+  const blocked = new Uint8Array(N), pen = new Uint8Array(N);
+  const g = new Float32Array(N * 4), prev = new Int32Array(N * 4);
+  const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
+  const cx0 = p => Math.max(0, Math.floor((p.x - 8 - CLEAR) / CELL));
+  const cx1 = p => Math.min(cols - 1, Math.floor((p.x + p.w + 4 + CLEAR) / CELL));
+  for (const p of places) {
+    const y0 = Math.max(0, Math.floor((p.y + 2 - CLEAR) / CELL)), y1 = Math.min(rows - 1, Math.floor((p.y + p.h - 4 + CLEAR) / CELL));
+    for (let y = y0; y <= y1; y++) for (let x = cx0(p); x <= cx1(p); x++) blocked[y * cols + x] = 1;
+  }
+  for (const r of walls) {
+    for (let y = Math.max(0, Math.floor(r.y0 / CELL)); y <= Math.min(rows - 1, Math.floor(r.y1 / CELL)); y++)
+      for (let x = Math.max(0, Math.floor(r.x0 / CELL)); x <= Math.min(cols - 1, Math.floor(r.x1 / CELL)); x++) blocked[y * cols + x] = 1;
+  }
+  return function (from, rowY, to, toY) {
+    const sx = Math.min(cols - 1, cx1(from) + 1), sy = Math.floor(rowY / CELL);
+    const ex = Math.max(1, cx0(to) - 1), ey = Math.floor(toY / CELL);
+    const start = (sy * cols + sx) * 4, goal = (ey * cols + ex) * 4;   // direction 0 = heading right
+    g.fill(Infinity);
+    const heap = makeHeap();
+    g[start] = 0; prev[start] = -1; heap.push(0, start);
+    while (heap.size) {
+      const s = heap.pop();
+      if (s === goal) break;
+      const d = s & 3, c = s >> 2, x = c % cols, y = (c - x) / cols;
+      for (let nd = 0; nd < 4; nd++) {
+        if (nd === ((d + 2) & 3)) continue;
+        const nx = x + DX[nd], ny = y + DY[nd];
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const nc = ny * cols + nx;
+        if (blocked[nc]) continue;
+        const ns = nc * 4 + nd, ng = g[s] + 1 + (nd !== d ? TURN : 0) + pen[nc];
+        if (ng < g[ns]) { g[ns] = ng; prev[ns] = s; heap.push(ng + Math.abs(nx - ex) + Math.abs(ny - ey), ns); }
+      }
+    }
+    if (g[goal] === Infinity) return null;
+    const cells = [];
+    for (let s = goal; s !== -1; s = prev[s]) cells.push(s >> 2);
+    cells.reverse();
+    const pt = c => ({ x: (c % cols + 0.5) * CELL, y: (Math.floor(c / cols) + 0.5) * CELL });
+    const out = [pt(cells[0])];
+    for (let i = 1; i < cells.length - 1; i++) {
+      pen[cells[i]] = Math.min(250, pen[cells[i]] + SHARED);         // later lines prefer their own lane
+      if (cells[i] - cells[i - 1] !== cells[i + 1] - cells[i]) out.push(pt(cells[i]));
+    }
+    if (cells.length > 1) out.push(pt(cells[cells.length - 1]));
+    return out;
+  };
+}
+
+function bounds() {
+  let w = scene.w, h = scene.h;
+  for (const m of marks) {
+    if (m.type === 'path') for (const p of m.pts) { w = Math.max(w, p[0]); h = Math.max(h, p[1]); }
+    else { ctx.font = NOTE_FONT; w = Math.max(w, m.x + ctx.measureText(m.text).width); h = Math.max(h, m.y + 14); }
+  }
+  return { w, h };
+}
+
+/* ---------- 4. draw ---------- */
+// Seeded random so each element keeps the same hand-drawn wobble between redraws.
+function rng(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return function () {
+    h += 0x6D2B79F5; let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function wobblyLine(c, x1, y1, x2, y2, r) {
+  const j = () => (r() - 0.5) * 3;
+  c.beginPath();
+  c.moveTo(x1 + j(), y1 + j());
+  c.quadraticCurveTo((x1 + x2) / 2 + j(), (y1 + y2) / 2 + j() * 1.6, x2 + j(), y2 + j());
+  c.stroke();
+}
+function drawRoute(c, rt, r) {
+  const pts = rt.pts, j = () => (r() - 0.5) * 2.4, n = pts.length;
+  const P = pts.map((p, i) => (i === 0 || i === n - 1) ? p : { x: p.x + j(), y: p.y + j() });
+  c.beginPath();
+  c.moveTo(P[0].x, P[0].y);
+  for (let i = 0; i < n - 1; i++) {
+    const a = P[i], b = P[i + 1], right = b.x > a.x;
+    for (const hx of rt.hops[i] || []) {                       // jump over each line this stretch crosses
+      const y = a.y + (b.y - a.y) * ((hx - a.x) / (b.x - a.x || 1));
+      c.lineTo(hx + (right ? -HOP : HOP), y);
+      if (right) c.arc(hx, y, HOP, Math.PI, 2 * Math.PI, false); else c.arc(hx, y, HOP, 0, Math.PI, true);
+    }
+    if (i + 2 < n) {
+      const d = P[i + 2];
+      const rad = Math.min(12, Math.hypot(b.x - a.x, b.y - a.y) / 2, Math.hypot(d.x - b.x, d.y - b.y) / 2);
+      c.arcTo(b.x, b.y, d.x, d.y, rad);
+    } else c.lineTo(b.x, b.y);
+  }
+  const e = P[n - 1];
+  c.moveTo(e.x - 12 + j(), e.y - 7 + j());
+  c.lineTo(e.x, e.y);
+  c.lineTo(e.x - 12 + j(), e.y + 7 + j());
+  c.stroke();
+}
+function drawScene(c, showHint) {
+  c.lineCap = 'round'; c.lineJoin = 'round';
+
+  if (!scene.nodes.length && showHint) {
+    c.fillStyle = MUTED; c.font = NOTE_FONT; c.textBaseline = 'alphabetic';
+    c.fillText('Start a line with "- " on the left to add a place', PAD, PAD + 24);
+  }
+
+  c.textBaseline = 'alphabetic';
+  if (scene.title) { c.fillStyle = INK; c.font = TITLE_FONT; c.fillText(scene.title, PAD - 6, PAD + 22); }
+  c.font = FONT;
+  for (const n of scene.nodes) {
+    const r = rng(n.key);
+    // connection lines: from an affordance (or the place name) to the place it leads to
+    c.strokeStyle = PURPLE; c.lineWidth = 2.5;
+    for (const rt of n.routes) drawRoute(c, rt, r);
+    c.save();
+    c.translate(n.x, n.y);
+    c.rotate((r() - 0.5) * 0.02);
+    c.fillStyle = INK;
+    c.fillText(n.name, 0, 24);
+    c.strokeStyle = INK; c.lineWidth = 3;
+    wobblyLine(c, -6, PLACE_H, n.w, PLACE_H, r);
+    n.affs.forEach((a, i) => c.fillText(a.label, 2, PLACE_H + AFF_H * (i + 1) - 4));
+    c.restore();
+  }
+
+  for (const m of marks) {
+    if (m.type === 'text') {
+      c.fillStyle = m.color; c.font = NOTE_FONT; c.textBaseline = 'middle';
+      c.fillText(m.text, m.x, m.y);
+    } else if (m.pts.length === 1) {
+      c.fillStyle = m.color; c.beginPath(); c.arc(m.pts[0][0], m.pts[0][1], 2.2, 0, Math.PI * 2); c.fill();
+    } else {
+      c.strokeStyle = m.color; c.lineWidth = 3.5; c.beginPath();
+      c.moveTo(m.pts[0][0], m.pts[0][1]);
+      for (let i = 1; i < m.pts.length - 1; i++) {
+        const p = m.pts[i], q = m.pts[i + 1];
+        c.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2);
+      }
+      const e = m.pts[m.pts.length - 1];
+      c.lineTo(e[0], e[1]);
+      c.stroke();
+    }
+  }
+}
+function paint() {
+  const b = bounds(), dpr = window.devicePixelRatio || 1;
+  const cw = Math.max(Math.ceil(b.w + PAD), wrap.clientWidth);
+  const ch = Math.max(Math.ceil(b.h + PAD), wrap.clientHeight);
+  if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+    canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
+    canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+  drawScene(ctx, true);
+}
+function relayout() { scene = layout(buildGraph(bulletTree(ed.value)), docTitle(ed.value)); paint(); }
+
+/* ---------- 5. editor: outliner keys ---------- */
+function replaceRange(start, end, text) {
+  ed.focus();
+  ed.setSelectionRange(start, end);
+  let ok = false;
+  try { ok = text === '' ? (start === end || document.execCommand('delete')) : document.execCommand('insertText', false, text); } catch (e) {}
+  if (!ok) { ed.setRangeText(text, start, end, 'end'); ed.dispatchEvent(new Event('input')); }
+}
+function indentSelection(dir) {
+  const v = ed.value, s = ed.selectionStart, e = ed.selectionEnd;
+  const ls = v.lastIndexOf('\n', s - 1) + 1;
+  let le = v.indexOf('\n', e); if (le < 0) le = v.length;
+  let dFirst = 0, dTotal = 0;
+  const out = v.slice(ls, le).split('\n').map((l, i) => {
+    const n = dir > 0 ? '  ' + l : l.replace(/^(\t|  | )/, '');
+    if (i === 0) dFirst = n.length - l.length;
+    dTotal += n.length - l.length;
+    return n;
+  }).join('\n');
+  if (!dTotal) return;
+  replaceRange(ls, le, out);
+  ed.setSelectionRange(Math.max(ls, s + dFirst), Math.max(ls, e + dTotal));
+}
+// Autocomplete for place names after "->"
+const ac = $('ac');
+let acList = [], acIndex = 0, acCtx = null;
+let linkAffs = false;      // preference: offer affordances as link targets in the list
+function acHide() { ac.hidden = true; acList = []; }
+function acUpdate() {
+  const v = ed.value, s = ed.selectionStart;
+  if (s !== ed.selectionEnd) return acHide();
+  const ls = v.lastIndexOf('\n', s - 1) + 1;
+  let le = v.indexOf('\n', s); if (le < 0) le = v.length;
+  const before = v.slice(ls, s);
+  const m = /^[ \t]*[-*+][ \t]+/.test(before) && before.match(/^(.*)(?:->|→)[ \t]*(.*)$/);
+  if (!m) return acHide();
+  const query = m[2].toLowerCase();
+  // Every other place in the file and, if the preference is on, every other affordance as "Place > Affordance".
+  const entries = [];
+  (function walk(items, depth, parent) {
+    for (const it of items) { entries.push({ it, place: depth % 2 === 0, parent }); walk(it.children, depth + 1, it); }
+  })(bulletTree(v), 0, null);
+  const lineNo = v.slice(0, ls).split('\n').length - 1;
+  const current = entries.find(e => e.it.line === lineNo);
+  const placeNames = new Set(entries.filter(e => e.place).map(e => e.it.label.toLowerCase()));
+  const affCount = {};
+  for (const e of entries) if (!e.place) {
+    const pair = e.parent.label.toLowerCase() + ' > ' + e.it.label.toLowerCase(), k = e.it.label.toLowerCase();
+    (affCount[k] = affCount[k] || new Set()).add(pair);
+  }
+  const seen = new Set(), mine = [], others = [];
+  for (const e of entries) {
+    if (e === current || !e.it.label || (!e.place && !linkAffs)) continue;
+    const k = e.it.label.toLowerCase();
+    const show = e.place ? e.it.label : e.parent.label + ' > ' + e.it.label;
+    // insert the short name when it can only mean this bullet
+    const value = e.place || (!placeNames.has(k) && affCount[k].size === 1) ? e.it.label : show;
+    if (seen.has(show.toLowerCase())) continue;
+    seen.add(show.toLowerCase());
+    const rank = k.startsWith(query) ? 0 : show.toLowerCase().includes(query) ? 1 : -1;
+    if (rank < 0) continue;
+    (current && e.parent === current.it ? mine : others).push({ show, value, rank });
+  }
+  const byRank = (a, b) => a.rank - b.rank;                      // sort is stable: file order within a rank
+  const list = [...mine.sort(byRank), ...others.sort(byRank)].slice(0, 60);
+  if (!list.length || (list.length === 1 && list[0].value.toLowerCase() === query)) return acHide();
+  acList = list; acIndex = 0; acCtx = { from: s - m[2].length, to: s };
+  ac.textContent = '';
+  list.forEach((entry, i) => {
+    const d = document.createElement('div');
+    d.textContent = entry.show; d.setAttribute('role', 'option');
+    d.addEventListener('mousedown', ev => { ev.preventDefault(); acAccept(i); });
+    ac.appendChild(d);
+  });
+  acMark();
+  // Find where the cursor sits on screen (lines may wrap) by laying the same text out in a hidden copy.
+  const mirror = $('mirror'), probe = document.createElement('span');
+  mirror.style.left = ed.offsetLeft + 'px'; mirror.style.top = ed.offsetTop + 'px'; mirror.style.width = ed.clientWidth + 'px';
+  mirror.textContent = v.slice(0, acCtx.from);
+  probe.textContent = '​';
+  mirror.appendChild(probe);
+  const x = ed.offsetLeft + probe.offsetLeft, y = ed.offsetTop + probe.offsetTop + 28 - ed.scrollTop + 2;
+  ac.hidden = false;
+  ac.style.left = Math.max(4, Math.min(x, ed.clientWidth - ac.offsetWidth - 4)) + 'px';
+  ac.style.top = y + 'px';
+}
+function acMark() {
+  [...ac.children].forEach((d, i) => d.setAttribute('aria-selected', String(i === acIndex)));
+  const sel = ac.children[acIndex];
+  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
+}
+function acAccept(i) {
+  const name = acList[i].value, c = acCtx;
+  acHide();
+  const gap = /[ \t]/.test(ed.value[c.from - 1] || '') ? '' : ' ';
+  replaceRange(c.from, c.to, gap + name);
+}
+ed.addEventListener('blur', acHide);
+ed.addEventListener('scroll', acHide);
+ed.addEventListener('click', acUpdate);
+
+ed.addEventListener('keydown', e => {
+  if (e.isComposing) return;                       // leave IME input (e.g. Japanese) alone
+  if (!ac.hidden) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      acIndex = (acIndex + (e.key === 'ArrowDown' ? 1 : acList.length - 1)) % acList.length;
+      acMark(); return;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acAccept(acIndex); return; }
+    if (e.key === 'Escape') { e.preventDefault(); acHide(); return; }
+  }
+  if (e.key === 'Tab') { e.preventDefault(); indentSelection(e.shiftKey ? -1 : 1); return; }
+  if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+    const v = ed.value, s = ed.selectionStart;
+    const ls = v.lastIndexOf('\n', s - 1) + 1;
+    let le = v.indexOf('\n', s); if (le < 0) le = v.length;
+    const m = v.slice(ls, le).match(/^([ \t]*)([-*+][ \t]+)?(.*)$/);
+    if (!m[2]) return;                             // plain text line: ordinary new line
+    e.preventDefault();
+    if (!m[3].trim()) {                    // Enter on an empty bullet steps back out
+      if (m[1].length) indentSelection(-1); else replaceRange(ls, le, '');
+      return;
+    }
+    replaceRange(s, ed.selectionEnd, '\n' + m[1] + m[2]);
+  }
+});
+ed.addEventListener('input', () => {
+  setDirty(true); relayout(); acUpdate();
+  try { localStorage.setItem('breadboard.draft.v2', ed.value); } catch (e) {}
+});
+
+/* ---------- 6. markup tools ---------- */
+function setTool(t) {
+  tool = tool === t ? null : t;
+  document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)));
+  canvas.className = tool || '';
+}
+function startNote(x, y) {
+  const inp = document.createElement('input');
+  inp.className = 'note'; inp.type = 'text';
+  inp.style.left = x + 'px'; inp.style.top = (y - 14) + 'px'; inp.style.color = color;
+  const c = color;
+  let done = false;
+  const finish = keep => {
+    if (done) return; done = true;
+    const text = inp.value.trim();
+    inp.remove();
+    if (keep && text) { marks.push({ type: 'text', color: c, x, y, text }); paint(); }
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.isComposing) return;
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  });
+  inp.addEventListener('blur', () => finish(true));
+  stage.appendChild(inp);
+  setTimeout(() => inp.focus(), 0);
+}
+canvas.addEventListener('pointerdown', e => {
+  if (tool === 'draw') {
+    canvas.setPointerCapture(e.pointerId);
+    stroke = { type: 'path', color, pts: [[e.offsetX, e.offsetY]] };
+    marks.push(stroke); paint();
+  } else if (tool === 'text') {
+    startNote(e.offsetX, e.offsetY);
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  if (!stroke) return;
+  stroke.pts.push([Math.max(0, e.offsetX), Math.max(0, e.offsetY)]);
+  paint();
+});
+const endStroke = () => { stroke = null; };
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointercancel', endStroke);
+
+/* ---------- 7. platform: everything that touches the disk ---------- */
+const platform = {
+  // Returns a file handle (saved via picker), null (sent to Downloads), or undefined (cancelled).
+  async saveBlob(blob, name) {
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name });
+        await this.writeHandle(h, blob);
+        return h;
+      } catch (e) { if (e.name === 'AbortError') return undefined; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    return null;
+  },
+  async writeHandle(handle, blob) {
+    const w = await handle.createWritable();
+    await w.write(blob); await w.close();
+  },
+  // Resolves to {name, text, handle} or null if cancelled.
+  async openText() {
+    if (window.showOpenFilePicker) {
+      try {
+        const [h] = await window.showOpenFilePicker({ types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.txt'] } }] });
+        const f = await h.getFile();
+        return { name: f.name, text: await f.text(), handle: h };
+      } catch (e) { if (e.name === 'AbortError') return null; }
+    }
+    return new Promise(resolve => {
+      const pick = $('filePick');
+      pick.value = '';
+      pick.onchange = async () => {
+        const f = pick.files[0];
+        resolve(f ? { name: f.name, text: await f.text(), handle: null } : null);
+      };
+      pick.click();
+    });
+  }
+};
+
+function setDirty(d) {
+  dirty = d;
+  $('fileName').textContent = fileName + (dirty ? ' •' : '');
+  document.title = fileName.replace(/\.[^.]+$/, '') + ' – Breadboard';
+}
+function loadDoc(text, name, handle) {
+  ed.value = text; fileName = name; fileHandle = handle; marks = [];
+  setDirty(false); relayout();
+  try { localStorage.setItem('breadboard.draft.v2', text); } catch (e) {}
+}
+async function saveDoc() {
+  const blob = new Blob([ed.value], { type: 'text/markdown' });
+  try {
+    if (fileHandle) { await platform.writeHandle(fileHandle, blob); setDirty(false); return; }
+    const h = await platform.saveBlob(blob, fileName);
+    if (h === undefined) return;
+    if (h) { fileHandle = h; fileName = h.name; }
+    setDirty(false);
+  } catch (e) { alert('Could not save: ' + e.message); }
+}
+async function openDoc() {
+  const f = await platform.openText();
+  if (f) loadDoc(f.text, f.name, f.handle);
+}
+
+/* ---------- 8. exporters ---------- */
+const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const baseName = () => fileName.replace(/\.[^.]+$/, '') || 'breadboard';
+
+function exportCanvas() {
+  const b = bounds(), s = 2;
+  const w = Math.ceil(b.w + PAD), h = Math.ceil(b.h + PAD);
+  const c = document.createElement('canvas');
+  c.width = w * s; c.height = h * s;
+  const x = c.getContext('2d');
+  x.scale(s, s);
+  x.fillStyle = BOARD; x.fillRect(0, 0, w, h);
+  drawScene(x, false);
+  return { c, w, h };
+}
+const jpegOf = c => new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+
+async function pdfBlob() {
+  // A one-page PDF sized to the board, holding the board as a JPEG image.
+  const { c, w, h } = exportCanvas();
+  const jpg = new Uint8Array(await (await jpegOf(c)).arrayBuffer());
+  const pw = (w * 0.75).toFixed(2), ph = (h * 0.75).toFixed(2);
+  const enc = new TextEncoder(), chunks = [], offs = [];
+  let len = 0;
+  const put = s => { const u = typeof s === 'string' ? enc.encode(s) : s; chunks.push(u); len += u.length; };
+  const obj = (n, body) => { offs[n] = len; put(n + ' 0 obj\n'); body(); put('\nendobj\n'); };
+  put('%PDF-1.4\n');
+  obj(1, () => put('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => put('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'));
+  obj(3, () => put('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pw + ' ' + ph + '] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'));
+  obj(4, () => {
+    put('<< /Type /XObject /Subtype /Image /Width ' + c.width + ' /Height ' + c.height +
+        ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpg.length + ' >>\nstream\n');
+    put(jpg); put('\nendstream');
+  });
+  const content = 'q ' + pw + ' 0 0 ' + ph + ' 0 0 cm /Im0 Do Q';
+  obj(5, () => put('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream'));
+  const xref = len;
+  put('xref\n0 6\n0000000000 65535 f \n');
+  for (let i = 1; i <= 5; i++) put(String(offs[i]).padStart(10, '0') + ' 00000 n \n');
+  put('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF');
+  return new Blob(chunks, { type: 'application/pdf' });
+}
+
+function opmlBlob() {
+  const walk = (nodes, d) => nodes.map(n => {
+    const pad = '  '.repeat(d + 2), attr = 'text="' + xml(n.text) + '"';
+    return n.children.length
+      ? pad + '<outline ' + attr + '>\n' + walk(n.children, d + 1) + pad + '</outline>\n'
+      : pad + '<outline ' + attr + '/>\n';
+  }).join('');
+  const out = '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>' + xml(docTitle(ed.value) || baseName()) +
+    '</title>\n  </head>\n  <body>\n' + walk(bulletTree(ed.value), 0) + '  </body>\n</opml>\n';
+  return new Blob([out], { type: 'text/x-opml' });
+}
+
+// Minimal ZIP writer (stored, no compression). A .docx is a ZIP of XML files.
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(u) { let c = ~0; for (let i = 0; i < u.length; i++) c = CRC_TABLE[(c ^ u[i]) & 255] ^ (c >>> 8); return (~c) >>> 0; }
+function zipParts(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let off = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true);
+    parts.push(new Uint8Array(lh.buffer), name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(14, 0x21, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, off, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    off += 30 + name.length + data.length;
+  }
+  const cdSize = central.reduce((s, u) => s + u.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+  return [...parts, ...central, new Uint8Array(end.buffer)];
+}
+function docxBlob() {
+  const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  // even depths are places (bold), odd depths are affordances
+  const para = (n, d) =>
+    '<w:p><w:pPr><w:ind w:left="' + (360 * (d + 1)) + '" w:hanging="260"/></w:pPr>' +
+    '<w:r><w:t xml:space="preserve">\u2022 </w:t></w:r>' +
+    '<w:r>' + (d % 2 ? '' : '<w:rPr><w:b/></w:rPr>') + '<w:t xml:space="preserve">' + xml(n.label) + '</w:t></w:r>' +
+    (n.targets.length ? '<w:r><w:t xml:space="preserve"> \u2192 ' + xml(n.targets.join(', ')) + '</w:t></w:r>' : '') + '</w:p>';
+  const walk = (nodes, d) => nodes.map(n => para(n, d) + walk(n.children, d + 1)).join('');
+  const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return new Blob(zipParts([
+    { name: '[Content_Types].xml', text: head + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+    { name: '_rels/.rels', text: head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+    { name: 'word/document.xml', text: head + '<w:document xmlns:w="' + W + '"><w:body>' +
+      (docTitle(ed.value) ? '<w:p><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t xml:space="preserve">' + xml(docTitle(ed.value)) + '</w:t></w:r></w:p>' : '') +
+      walk(bulletTree(ed.value), 0) + '<w:sectPr/></w:body></w:document>' }
+  ]), { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+async function exportAs(fmt) {
+  try {
+    let blob;
+    if (fmt === 'jpg') blob = await jpegOf(exportCanvas().c);
+    else if (fmt === 'pdf') blob = await pdfBlob();
+    else if (fmt === 'docx') blob = docxBlob();
+    else if (fmt === 'opml') blob = opmlBlob();
+    else blob = new Blob([ed.value], { type: 'text/markdown' });
+    await platform.saveBlob(blob, baseName() + '.' + fmt);
+  } catch (e) { alert('Export failed: ' + e.message); }
+}
+
+/* ---------- 9. wiring ---------- */
+$('btnNew').onclick = () => {
+  if (dirty && !confirm('Discard unsaved changes?')) return;
+  loadDoc('- ', 'untitled.md', null);
+  ed.focus(); ed.setSelectionRange(2, 2);
+};
+$('btnOpen').onclick = openDoc;
+$('btnSave').onclick = saveDoc;
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+document.querySelectorAll('.swatch').forEach(b => b.onclick = () => {
+  color = b.dataset.color;
+  document.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', String(s === b)));
+});
+$('btnUndo').onclick = () => { marks.pop(); paint(); };
+$('btnWipe').onclick = () => { marks = []; paint(); };
+try { linkAffs = localStorage.getItem('breadboard.linkAffs') === '1'; } catch (e) {}
+$('optAffs').checked = linkAffs;
+$('optAffs').onchange = e => {
+  linkAffs = e.target.checked;
+  try { localStorage.setItem('breadboard.linkAffs', linkAffs ? '1' : '0'); } catch (err) {}
+};
+
+const menu = $('exportMenu'), btnExport = $('btnExport');
+const showMenu = on => { menu.hidden = !on; btnExport.setAttribute('aria-expanded', String(on)); };
+btnExport.onclick = e => { e.stopPropagation(); showMenu(menu.hidden); };
+menu.querySelectorAll('[data-fmt]').forEach(b => b.onclick = () => { showMenu(false); exportAs(b.dataset.fmt); });
+document.addEventListener('click', () => showMenu(false));
+
+document.addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 's') { e.preventDefault(); saveDoc(); }
+  else if (k === 'o') { e.preventDefault(); openDoc(); }
+});
+
+// Draggable divider between the panes (stacks vertically on narrow screens).
+(() => {
+  const div = $('divider'), left = $('left'), app = $('app');
+  div.addEventListener('pointerdown', e => {
+    div.setPointerCapture(e.pointerId); div.classList.add('drag');
+    const move = ev => {
+      const r = app.getBoundingClientRect();
+      const column = getComputedStyle(app).flexDirection === 'column';
+      const pct = column ? (ev.clientY - r.top) / r.height * 100 : (ev.clientX - r.left) / r.width * 100;
+      left.style.flexBasis = Math.min(80, Math.max(15, pct)) + '%';
+    };
+    const up = () => {
+      div.classList.remove('drag');
+      div.removeEventListener('pointermove', move); div.removeEventListener('pointerup', up);
+      try { localStorage.setItem('breadboard.split', left.style.flexBasis); } catch (err) {}
+    };
+    div.addEventListener('pointermove', move); div.addEventListener('pointerup', up);
+  });
+  try { const s = localStorage.getItem('breadboard.split'); if (s) left.style.flexBasis = s; } catch (err) {}
+})();
+
+new ResizeObserver(paint).observe(wrap);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
+
+let draft = null;
+try { draft = localStorage.getItem('breadboard.draft.v2'); } catch (e) {}
+loadDoc(draft && draft.trim() ? draft : SAMPLE, 'untitled.md', null);
+</script>
+</body>
+</html>
+
+</body></html>
