@@ -1,4 +1,8 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}dialog#newDlg{border:2px solid var(--ink);border-radius:10px;padding:20px 22px;max-width:380px;box-shadow:4px 5px 0 rgba(0,0,0,.2);font:15px/1.4 system-ui,sans-serif;color:var(--ink)}
+dialog#newDlg::backdrop{background:rgba(0,0,0,.3)}
+dialog#newDlg p{margin:0 0 16px}
+dialog#newDlg .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+</style></head><body>
 <!doctype html>
 <html lang="en">
 <head>
@@ -82,6 +86,13 @@ button:focus-visible,textarea:focus-visible,.swatch:focus-visible{outline:3px so
 </style>
 </head>
 <body>
+<dialog id="newDlg" aria-labelledby="newMsg">
+  <p id="newMsg">Your existing file will be deleted. Consider saving a copy before starting on a new diagram.</p>
+  <div class="row">
+    <button id="newCancel" autofocus>Hang on, I'll save first</button>
+    <button id="newGo">New file, please</button>
+  </div>
+</dialog>
 <div id="app">
   <section id="left" aria-label="Outline">
     <div class="bar">
@@ -1011,8 +1022,10 @@ async function exportAs(fmt) {
 }
 
 /* ---------- 9. wiring ---------- */
-$('btnNew').onclick = () => {
-  if (dirty && !confirm('Discard unsaved changes?')) return;
+$('btnNew').onclick = () => $('newDlg').showModal();
+$('newCancel').onclick = () => $('newDlg').close();      // Escape also cancels
+$('newGo').onclick = () => {
+  $('newDlg').close();
   loadDoc('- ', 'untitled.md', null);
   ed.focus(); ed.setSelectionRange(2, 2);
 };
