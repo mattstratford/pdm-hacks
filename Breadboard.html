@@ -165,6 +165,7 @@ const SAMPLE = [
 
 let scene = { nodes: [], w: 0, h: 0 };
 let marks = [];            // {type:'path',color,pts:[[x,y],...]} | {type:'text',color,x,y,text}
+let selMark = null;       // the drawn line currently selected (if any)
 let tool = null, color = '#c8312b', stroke = null;
 let fileHandle = null, fileName = 'untitled.md', dirty = false;
 
@@ -510,6 +511,16 @@ function paint() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cw, ch);
   drawScene(ctx, true);
+  if (selMark && !marks.includes(selMark)) selMark = null;
+  if (selMark) {                                   // selection halo: screen only, never exported
+    ctx.save(); ctx.strokeStyle = 'rgba(80,120,255,.35)'; ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = 12; ctx.lineCap = ctx.lineJoin = 'round'; ctx.beginPath();
+    selMark.pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    if (selMark.pts.length === 1) ctx.arc(selMark.pts[0][0], selMark.pts[0][1], 8, 0, Math.PI * 2);
+    ctx.stroke(); ctx.restore();
+  }
+  selBtn.style.display = selMark ? '' : 'none';
+  if (selMark) { selBtn.style.left = selMark.pts[0][0] + 'px'; selBtn.style.top = (selMark.pts[0][1] + 10) + 'px'; }
 }
 function relayout() { scene = layout(buildGraph(bulletTree(ed.value)), docTitle(ed.value)); paint(); }
 
@@ -654,6 +665,28 @@ function startNote(x, y, old, idx) {
   if (old) stage.appendChild(del);
   setTimeout(() => { inp.focus(); if (old) inp.select(); }, 0);
 }
+const selBtn = document.createElement('button');
+selBtn.className = 'note-del'; selBtn.textContent = 'Delete line'; selBtn.style.display = 'none';
+selBtn.addEventListener('click', () => deleteSelected());
+stage.appendChild(selBtn);
+function deleteSelected() {
+  if (!selMark) return;
+  const i = marks.indexOf(selMark); if (i >= 0) marks.splice(i, 1);
+  selMark = null; paint();
+}
+function pathAt(x, y) {
+  const near = (p, q) => {                         // distance from (x,y) to segment p-q
+    const dx = q[0] - p[0], dy = q[1] - p[1], l = dx * dx + dy * dy;
+    const t = l ? Math.max(0, Math.min(1, ((x - p[0]) * dx + (y - p[1]) * dy) / l)) : 0;
+    return Math.hypot(x - (p[0] + t * dx), y - (p[1] + t * dy));
+  };
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const m = marks[i];
+    if (m.type !== 'path') continue;
+    if (m.pts.length === 1 ? near(m.pts[0], m.pts[0]) <= 7 : m.pts.some((p, j) => j && near(m.pts[j - 1], p) <= 7)) return m;
+  }
+  return null;
+}
 function textAt(x, y) {
   for (let i = marks.length - 1; i >= 0; i--) {
     const m = marks[i];
@@ -671,6 +704,12 @@ canvas.addEventListener('pointerdown', e => {
       startNote(m.x, m.y, m, i); e.preventDefault(); return;
     }
   }
+  if (!tool) {                                 // (no tool) click a drawn line to select it; click empty space to deselect
+    const hit = pathAt(e.offsetX, e.offsetY), was = selMark;
+    selMark = hit; if (hit !== was) paint();
+    if (hit) return;
+  }
+  if (tool) selMark = null;
   if (tool === 'draw') {
     canvas.setPointerCapture(e.pointerId);
     stroke = { type: 'path', color, pts: [[e.offsetX, e.offsetY]] };
@@ -681,7 +720,7 @@ canvas.addEventListener('pointerdown', e => {
 });
 canvas.addEventListener('pointermove', e => {
   if (stroke || tool === 'draw') return;
-  canvas.style.cursor = textAt(e.offsetX, e.offsetY) >= 0 ? 'text' : '';
+  canvas.style.cursor = textAt(e.offsetX, e.offsetY) >= 0 ? 'text' : pathAt(e.offsetX, e.offsetY) ? 'pointer' : '';
 });
 canvas.addEventListener('pointermove', e => {
   if (!stroke) return;
@@ -900,6 +939,9 @@ menu.querySelectorAll('[data-fmt]').forEach(b => b.onclick = () => { showMenu(fa
 document.addEventListener('click', () => showMenu(false));
 
 document.addEventListener('keydown', e => {
+  const t = e.target.tagName;
+  if (selMark && (e.key === 'Delete' || e.key === 'Backspace') && t !== 'INPUT' && t !== 'TEXTAREA') { e.preventDefault(); deleteSelected(); return; }
+  if (selMark && e.key === 'Escape' && t !== 'INPUT' && t !== 'TEXTAREA') { selMark = null; paint(); return; }
   if (!(e.metaKey || e.ctrlKey)) return;
   const k = e.key.toLowerCase();
   if (k === 's') { e.preventDefault(); saveDoc(); }
