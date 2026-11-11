@@ -63,6 +63,7 @@ button:focus-visible,textarea:focus-visible,.swatch:focus-visible{outline:3px so
 #board{display:block}
 #board.draw{cursor:crosshair;touch-action:none}
 #board.text{cursor:text}
+.note-del{position:absolute;font-size:12px;padding:2px 8px;cursor:pointer}
 .note{position:absolute;height:28px;min-width:160px;padding:0;border:0;border-bottom:2px dashed var(--muted);
   background:rgba(255,255,255,.7);font:22px/28px var(--marker);outline:none}
 
@@ -621,18 +622,28 @@ function setTool(t) {
   document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)));
   canvas.className = tool || '';
 }
-function startNote(x, y) {
+function startNote(x, y, old, idx) {
+  // old/idx are set when editing an existing text mark: it is lifted off the board while you edit.
   const inp = document.createElement('input');
   inp.className = 'note'; inp.type = 'text';
-  inp.style.left = x + 'px'; inp.style.top = (y - 14) + 'px'; inp.style.color = color;
-  const c = color;
+  inp.style.left = x + 'px'; inp.style.top = (y - 14) + 'px';
+  const c = old ? old.color : color;
+  inp.style.color = c;
+  if (old) inp.value = old.text;
   let done = false;
   const finish = keep => {
     if (done) return; done = true;
     const text = inp.value.trim();
-    inp.remove();
-    if (keep && text) { marks.push({ type: 'text', color: c, x, y, text }); paint(); }
+    inp.remove(); del.remove();
+    if (keep && text) marks.splice(idx === undefined ? marks.length : idx, 0, { type: 'text', color: c, x, y, text });
+    else if (!keep && old) marks.splice(idx, 0, old);   // Escape: put it back unchanged
+    paint();                                            // empty text or Delete: the mark stays removed
   };
+  const del = document.createElement('button');
+  del.className = 'note-del'; del.textContent = 'Delete'; del.title = 'Delete this text';
+  del.style.left = x + 'px'; del.style.top = (y + 12) + 'px';
+  del.addEventListener('mousedown', e => e.preventDefault());   // keep focus so blur does not save first
+  del.addEventListener('click', () => { inp.value = ''; finish(true); });
   inp.addEventListener('keydown', e => {
     if (e.isComposing) return;
     if (e.key === 'Enter') finish(true);
@@ -640,9 +651,26 @@ function startNote(x, y) {
   });
   inp.addEventListener('blur', () => finish(true));
   stage.appendChild(inp);
-  setTimeout(() => inp.focus(), 0);
+  if (old) stage.appendChild(del);
+  setTimeout(() => { inp.focus(); if (old) inp.select(); }, 0);
+}
+function textAt(x, y) {
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const m = marks[i];
+    if (m.type !== 'text') continue;
+    ctx.font = NOTE_FONT;
+    if (x >= m.x - 3 && x <= m.x + ctx.measureText(m.text).width + 3 && Math.abs(y - m.y) <= 11) return i;
+  }
+  return -1;
 }
 canvas.addEventListener('pointerdown', e => {
+  if (tool !== 'draw') {                       // clicking existing text edits it (unless drawing)
+    const i = textAt(e.offsetX, e.offsetY);
+    if (i >= 0) {
+      const m = marks.splice(i, 1)[0]; paint();
+      startNote(m.x, m.y, m, i); e.preventDefault(); return;
+    }
+  }
   if (tool === 'draw') {
     canvas.setPointerCapture(e.pointerId);
     stroke = { type: 'path', color, pts: [[e.offsetX, e.offsetY]] };
@@ -650,6 +678,10 @@ canvas.addEventListener('pointerdown', e => {
   } else if (tool === 'text') {
     startNote(e.offsetX, e.offsetY);
   }
+});
+canvas.addEventListener('pointermove', e => {
+  if (stroke || tool === 'draw') return;
+  canvas.style.cursor = textAt(e.offsetX, e.offsetY) >= 0 ? 'text' : '';
 });
 canvas.addEventListener('pointermove', e => {
   if (!stroke) return;
