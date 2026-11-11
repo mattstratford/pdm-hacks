@@ -704,7 +704,7 @@ canvas.addEventListener('pointerdown', e => {
       startNote(m.x, m.y, m, i); e.preventDefault(); return;
     }
   }
-  if (!tool) {                                 // (no tool) click a drawn line to select it; click empty space to deselect
+  if (tool !== 'text') {                       // (no tool or Draw) over an existing line, a click selects it instead of drawing; empty space deselects
     const hit = pathAt(e.offsetX, e.offsetY), was = selMark;
     selMark = hit; if (hit !== was) paint();
     if (hit) return;
@@ -719,8 +719,10 @@ canvas.addEventListener('pointerdown', e => {
   }
 });
 canvas.addEventListener('pointermove', e => {
-  if (stroke || tool === 'draw') return;
-  canvas.style.cursor = textAt(e.offsetX, e.offsetY) >= 0 ? 'text' : pathAt(e.offsetX, e.offsetY) ? 'pointer' : '';
+  if (stroke) return;
+  const onLine = tool !== 'text' && pathAt(e.offsetX, e.offsetY);
+  const onText = tool !== 'draw' && textAt(e.offsetX, e.offsetY) >= 0;
+  canvas.style.cursor = onText ? 'text' : onLine ? 'pointer' : '';   // '' falls back to the tool's own cursor
 });
 canvas.addEventListener('pointermove', e => {
   if (!stroke) return;
